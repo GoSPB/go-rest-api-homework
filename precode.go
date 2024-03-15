@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -41,67 +41,82 @@ var tasks = map[string]Task{
 	},
 }
 
-// Ниже напишите обработчики для каждого эндпоинта
-func getTasks(w http.ResponseWriter, req *http.Request) {
-	resp, err := json.Marshal(tasks)
+func getAllTasks(w http.ResponseWriter, _ *http.Request) {
+	response, err := json.Marshal(tasks)
+
 	if err != nil {
+		log.Printf("Error json.Marshal: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+
+	_, err = w.Write(response)
+
+	if err != nil {
+		log.Printf("Error w.Write response: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
-func addTask(w http.ResponseWriter, req *http.Request) {
-	var task Task
-	var buf bytes.Buffer
+func createTask(w http.ResponseWriter, r *http.Request) {
+	var newTask Task
+	dec := json.NewDecoder(r.Body)
 
-	_, err := buf.ReadFrom(req.Body)
+	err := dec.Decode(&newTask)
 	if err != nil {
+		log.Printf("Error dec.Decode: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err = json.Unmarshal(buf.Bytes(), &task); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	tasks[task.ID] = task
-
+	tasks[newTask.ID] = newTask
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 }
 
-func getOneTask(w http.ResponseWriter, req *http.Request) {
-	id := chi.URLParam(req, "id")
+func getTaskById(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
 
-	task, ok := tasks[id]
+	findedTask, ok := tasks[id]
 	if !ok {
-		http.Error(w, "Task for get not found", http.StatusNoContent)
+		log.Print("Error task not found")
+		http.Error(w, "getTaskById: task not found", http.StatusBadRequest)
 		return
 	}
 
-	resp, err := json.Marshal(task)
+	response, err := json.Marshal(findedTask)
 	if err != nil {
+		log.Printf("Error json.Marshal: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+
+	_, err = w.Write(response)
+	if err != nil {
+		log.Printf("Error w.Write response: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 }
 
-func delTask(w http.ResponseWriter, req *http.Request) {
-	id := chi.URLParam(req, "id")
+func deleteTaskById(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	findedTask, ok := tasks[id]
 
-	task, ok := tasks[id]
 	if !ok {
-		http.Error(w, "Task for delete not found", http.StatusNoContent)
+		log.Print("Error task not found")
+		http.Error(w, "deleteTaskById: task not found", http.StatusBadRequest)
+		return
 	}
 
-	delete(tasks, task.ID)
+	delete(tasks, findedTask.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -110,14 +125,14 @@ func delTask(w http.ResponseWriter, req *http.Request) {
 func main() {
 	r := chi.NewRouter()
 
-	// здесь регистрируйте ваши обработчики
-	r.Get("/tasks", getTasks)
-	r.Post("/tasks", addTask)
-	r.Get("/tasks/{id}", getOneTask)
-	r.Delete("/tasks/{id}", delTask)
+	r.Get("/tasks", getAllTasks)
+	r.Post("/tasks", createTask)
+	r.Get("/tasks/{id}", getTaskById)
+	r.Delete("/tasks/{id}", deleteTaskById)
 
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
 		return
 	}
 }
+
